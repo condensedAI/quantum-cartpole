@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 import scipy.linalg as linalg
-import gym_qcart.utility.utilv0 as utilv0
+import gym_qcart.utility.util as util
 from scipy.signal import savgol_filter
 from os import path
 

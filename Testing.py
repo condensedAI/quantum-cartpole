@@ -16,23 +16,18 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 if __name__ == "__main__":
 
-    N, timesteps, sigma, dt =  10, 1000, 0.7, 0.1
-    log_dir = f"data/"
-    env = gym.make('qcart-v0')
-    file_name = f"ts{timesteps}_sigma{sigma}_dt{dt}/"
-    model = PPO.load(f"{log_dir}/{file_name}/{file_name}")
+    # log_dir = f"data/"
+    env = gym.make('qcart-v0', types = 'lqr')
+    # file_name = f"ts{timesteps}_sigma{sigma}_dt{dt}/"
+    # model = PPO.load(f"{log_dir}/{file_name}/{file_name}")
 
     obs = env.reset()
     reward_mean = 0
-    for i in range(N):
+    for i in range(10):
         env.reset()
         for j in range(env.termination):
-            if obs[0] > 0:
-                action = 0
-            else:
-                action = 6
             # action, _state = model.predict(obs, deterministic=True)
-            obs ,reward, done, something = env.step(action)
+            obs ,reward, done, something = env.step(0)
             env.render()
 
             if done == True:
