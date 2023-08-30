@@ -72,12 +72,7 @@ def Jacobian_quartic(env):
     env.A2 = np.array([[1 , (env.dt * env.N_meas) /env.m], [12 * env.k*(env.dt * env.N_meas) * env.estimate[0]**2, 1]]) 
     env.Q2 = np.diag([env.k * env.estimate[0] **2, 1/(env.m*2)]) 
 
-def Jacobian_consine(env):
-    env.A = np.array([[1 , (env.dt) /env.m], [env.k*env.dt*((np.pi/(env.max_position) )**2) * np.cos(np.pi*env.estimate[0]/(env.max_position) ), 1]]) 
-    env.A2 = np.array([[1 , (env.dt * env.N_meas) /env.m], [env.k*(env.dt * env.N_meas)*((np.pi/(env.max_position) )**2) * np.cos(np.pi*env.estimate[0]/(env.max_position) ), 1]])         
-    env.Q2 = np.diag([1, 1])
-
-def Jacobian_consine2(env):
+def Jacobian_cosine(env):
     env.A = np.array([[1 , (env.dt) /env.m], [env.k*env.dt*((np.pi/(1.5*env.max_position) )**2) * np.cos(np.pi*env.estimate[0]/(1.5*env.max_position) ), 1]]) 
     env.A2 = np.array([[1 , (env.dt * env.N_meas) /env.m], [env.k*(env.dt * env.N_meas)*((np.pi/(1.5*env.max_position) )**2) * np.cos(np.pi*env.estimate[0]/(1.5*env.max_position) ), 1]])         
     env.Q2 = np.diag([1, 1])
@@ -88,20 +83,20 @@ def control_random(env):
     env.estimate += env.action
     env.difference = np.abs(((env.estimate - env.measurement/env.L) / ( env.max_position * 2 ) ) )
     lgc = (np.random.rand()*2 - 1) * env.Fmax
-    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
+    return np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
 def control_lqr(env):
     lgc = -np.sum(np.dot(env.K, env.estimate ))
-    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
+    return np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
-def extended_lqr(env):
+def control_elqr(env):
     env.K, _, _ = ct.dlqr(env.A2, env.B2, env.Q2, env.R2)
     lgc =  -1*np.sum(np.dot(env.K, env.estimate))
-    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
+    return np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
 def control_rlc(env):
-    lgc =  -1*env.action * env.Fmax
-    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
+    lgc =  -env.action * env.Fmax
+    return np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
 # Time Evolutions function & Measurement
 def time_evolution_classical(env):
@@ -109,6 +104,7 @@ def time_evolution_classical(env):
     meas = np.random.normal(0, env.sigma , 2)
     env.back = backaction(meas[0]/env.L, meas[1]/env.L, env.sigma_sys)
     env.measurement = env.C.dot(env.actual_pos) + meas
+    env.actual_pos += env.back
 
 def time_evolution_quantum(env):
     
@@ -142,7 +138,7 @@ def extended_kalman(env):
     if env.number_of_steps_taken%env.N_meas == env.N_meas-1:    
         x_pred = env.time_step(env, env.estimate) + env.B.dot(env.control)          ### state prediction
         y_pred = env.C.dot(x_pred)                                                  ### measurement prediction
-        y_res = env.measurement - y_pred                                            ### measurement residual
+        y_res = env.measurement_mean - y_pred                                            ### measurement residual
         env.P = env.A.dot(env.P).dot(np.transpose(env.A)) + env.Q                   ### State prediciton covariance
         S_pred = env.R + env.C.dot(env.P).dot(np.transpose(env.C))                  ### Innovation Covariance
         kalman_gain = env.P.dot(np.transpose(env.C)).dot( np.linalg.inv(S_pred) )   ### Filter gain
@@ -235,7 +231,7 @@ class QuantumCartPoleEnvV1(gym.Env):
         self.max_position = 8
         self.dt = 0.01/np.pi
         self.L = 0.05
-        self.mu = np.array([0. , 0.1], dtype=np.float64)
+        self.mu = np.array([0. , 1.0], dtype=np.float64)
         self.m = 1/np.pi
         self.termination = 1e6
         self.Fmax = 8*np.pi
@@ -262,28 +258,31 @@ class QuantumCartPoleEnvV1(gym.Env):
         self.time_step = eval(potential)
         self.return_output = eval(state_return)
 
+        self.A = np.array([[1 , (self.dt * N_meas) /self.m], [self.k*(self.dt * N_meas) , 1]])
+        self.B = np.array([[0, 0], [0, self.dt * N_meas]])
+        self.C = np.diag([self.L, self.L])
+
+        if potential == 'quadratic':
+            self.P = np.array([[1 , 0], [0, 1]])
+            self.P_reset = np.array([[1 , 0], [0, 1]])                
+            self.sigma_sys = np.array([sigma_func1(self.sigma, -0.00433991, 0.01332713), 
+                                        sigma_func2(self.sigma, -1.34074255e-05, 4.83173413e+00, 1.02313236e-02),
+                                        sigma_func2(self.sigma, -6.87118142e-05, 3.30739658e+00, 1.03732448e-02), 
+                                        sigma_func1(self.sigma, -0.00504242, 0.01357103)])                                    
+        elif potential == 'quartic':
+            self.P = np.array([[610 , 280], [180, 130]])
+            self.P_reset = np.array([[610 , 280], [180, 130]])                
+            self.sigma_sys = np.array([0.008086549851490932, 0.005606322236226655, 0.005601178239519393, 0.006012663950129217])                
+        elif potential == 'cosine':
+            self.P = np.array([[769 , 621], [620, 769]])
+            self.P_reset = np.array([[769 , 621], [620, 769]])                
+            self.sigma_sys = np.array([0.01214231068233882, 0.010957951536296766, 0.00955755313643539, 0.010540234359464778])
+            # self.sigma_sys = np.array([0.0095, 0.0095, 0.0095, 0.0095])#########Das hier machen
+
+
         if system == 'classical':
-            self.A = np.array([[1 , (self.dt * N_meas) /self.m], [self.k*(self.dt * N_meas) , 1]])
-            self.B = np.array([[0, 0], [0, self.dt * N_meas]])
-            self.C = np.diag([self.L, self.L])
             self.time_evolution = time_evolution_classical
             self.back = np.zeros(2)
-            if potential == 'quadratic':
-                self.P = np.array([[1 , 0], [0, 1]])
-                self.P_reset = np.array([[1 , 0], [0, 1]])                
-                self.sigma_sys = np.array([sigma_func1(self.sigma, -0.00433991, 0.01332713), 
-                                            sigma_func2(self.sigma, -1.34074255e-05, 4.83173413e+00, 1.02313236e-02),
-                                            sigma_func2(self.sigma, -6.87118142e-05, 3.30739658e+00, 1.03732448e-02), 
-                                            sigma_func1(self.sigma, -0.00504242, 0.01357103)])                                    
-            elif potential == 'quartic':
-                self.P = np.array([[610 , 280], [180, 130]])
-                self.P_reset = np.array([[610 , 280], [180, 130]])                
-                self.sigma_sys = np.array([0.008086549851490932, 0.005606322236226655, 0.005601178239519393, 0.006012663950129217])                
-            elif potential == 'cosine':
-                self.P = np.array([[769 , 621], [620, 769]])
-                self.P_reset = np.array([[769 , 621], [620, 769]])                
-                self.sigma_sys = np.array([0.01214231068233882, 0.010957951536296766, 0.00955755313643539, 0.010540234359464778])
-
 
         elif system == 'quantum':
             self.Nq = 10001
@@ -301,11 +300,12 @@ class QuantumCartPoleEnvV1(gym.Env):
 
             self.example_pos = utilt.example_meas_pos(self.xarr, self.qarr, self.psi_0, self.phi_0, self.phi_1, self.phi_2, self.L)
             self.example_mom = utilt.example_meas_mom(self.qarr, self.psi_0, self.psi_1, self.psi_2, self.phi_0, self.phi_1, self.phi_2, self.L) 
-            self.V = eval(potential + 'V()')
+            self.V = eval(potential + 'V(self)')
          
 
-        if estimator == "kalman":
+        if estimator == "kalman" or estimator == "extended_kalman":
             self.R = np.diag([ (self.sigma/self.L/np.sqrt(N_meas))**2, (self.sigma/self.L/np.sqrt(N_meas))**2 ])
+            self.R_inv = np.linalg.inv(np.diag([ (self.sigma/self.L)**2, (self.sigma/self.L)**2 ]))
             self.Q = np.ones((2,2)) * 2*(self.sigma/self.L * (self.L**2/(2*self.sigma**2)   / (1/(2*1.41**2))))**2 /np.sqrt(N_meas)
             self.U = np.ones((2,2)) * (self.sigma/self.L)**2/100 /np.sqrt(N_meas)
 
@@ -314,7 +314,7 @@ class QuantumCartPoleEnvV1(gym.Env):
             self.Q_mod = self.Q - self.T.dot(np.transpose(self.U))
             self.kalman_gain , _, _= ct.dlqe(self.A_mod, np.diag([1,1]), self.C, self.Q_mod, self.R)
 
-        if controller == "lqr":
+        if controller == "lqr" or controller == "elqr":
             self.A2 = np.array([[1 , (self.dt * self.N_meas) /self.m], [self.k*(self.dt * self.N_meas), 1]])
             self.B2 = np.array([[0], [(self.dt * self.N_meas)]])         
             self.Q2 = np.diag([self.k/2, 1/(self.m*2)])
@@ -322,9 +322,10 @@ class QuantumCartPoleEnvV1(gym.Env):
             self.K, _, _ = ct.dlqr(self.A2, self.B2, self.Q2, self.R2)
 
         self.estimator = eval(estimator)
-        self.controller = eval(controller)        
+        self.controller = eval('control_' + controller)        
         self.filter_model = filter_model
         self.Jacobian = eval('Jacobian_' + potential)
+        self.Jacobian(self)
 
         self.reset()
     
@@ -364,10 +365,12 @@ class QuantumCartPoleEnvV1(gym.Env):
     def reset(self):
 
         if self.system == 'classical':
-            self.actual_pos[0] = np.random.normal(0, self.mu[0], 1)
-            self.actual_pos[1] = np.random.uniform(0, self.mu[1], 1)
+            # self.actual_pos[0] = np.random.normal(0, self.mu[0], 1)
+            # self.actual_pos[1] = np.random.normal(0, self.mu[1], 1)
+            self.actual_pos[0] = np.random.uniform(low=-self.mu[0], high=self.mu[0])
+            self.actual_pos[1] = np.random.uniform(low=-self.mu[1], high=self.mu[1])            
         elif self.system == 'quantum':
-            self.psi_0 = utilt.gaussian_wavepaket(self.xarr, 0, np.random.uniform(-self.mu, self.mu), 1)
+            self.psi_0 = utilt.gaussian_wavepaket(self.xarr, 0, np.random.normal(0, self.mu[1], 1), 1)
 
         self.P = 1. * self.P_reset
         self.estimate[:] = 0.
