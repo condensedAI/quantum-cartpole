@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 import scipy.linalg as linalg
-import gym_qcart.utility.utilv1 as utilt
+import gym_qcart.utility.util as utilt
 from os import path
 import time
 import numba as nb
@@ -9,7 +9,7 @@ from scipy.optimize import curve_fit
 import control as ct
 from gym import spaces
 
-#######Runge Juttta for time evoultion
+#Runge Kuttta for time evoultion of wavefunction
 @nb.jit
 def d_dxdx(phi, deltax):
     dphi_dxdx = -2*phi
@@ -32,11 +32,12 @@ def rk4(phi, dt, m, V, deltax):
 def kick_operator(env, force):
     return np.exp(-1j*(-force*env.xarr)*env.dt)
 
-#######################################3
+#The system noise approximeted to be a linear combination of the emasurement
 @nb.jit
 def backaction(x_dif, p_dif, weights):
     return weights[0]* x_dif + weights[2] * p_dif, weights[1]* x_dif + weights[2] * p_dif, 
 
+#Classical time steps depending on the potential, used in classicla time evoultion and for kalman filter
 def quadratic(env, sys):
     x = sys[0] + sys[1]/env.m * env.dt
     p = sys[1] + env.k*sys[0] * env.dt
@@ -52,6 +53,7 @@ def cosine(env, sys):
     p = sys[1] + env.k*(np.pi/(1.5*env.max_position)) * np.sin(np.pi * sys[0]/(1.5*env.max_position))  * env.dt
     return np.array([x, p])
 
+#Different potential for the systems
 def quadraticV(env):
     return -0.5 * env.k * env.xarr ** 2
 
@@ -61,8 +63,7 @@ def quarticV(env):
 def cosineV(env):
     return env.k * (np.cos(np.pi*env.xarr/(1.5*env.max_position) ) - 1 )
 
-###############################
-
+#Jacobian used for extended kalman filter and lqr. quadratic jacobian is just a pass, since it is not needed
 def Jacobian_quadratic(env):
     pass
 
@@ -82,31 +83,27 @@ def Jacobian_consine2(env):
     env.Q2 = np.diag([1, 1])
 
 
-################################################# Control functions
+# Control functions
 def control_random(env):
     env.estimate += env.action
-    env.difference = np.abs(((env.estimate - env.measurement/env.L) / ( env.max_position * 2 ) ) )# **2
+    env.difference = np.abs(((env.estimate - env.measurement/env.L) / ( env.max_position * 2 ) ) )
     lgc = (np.random.rand()*2 - 1) * env.Fmax
     return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
-def control_linear(env):
-    lgc = -np.sum(np.dot(env.K, env.estimate_mean ))
-    env.estimate_mean[:] *= 0
-    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
-
 def control_lqr(env):
+    lgc = -np.sum(np.dot(env.K, env.estimate ))
+    return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
+
+def extended_lqr(env):
     env.K, _, _ = ct.dlqr(env.A2, env.B2, env.Q2, env.R2)
-    lgc =  -1*np.sum(np.dot(env.K, env.estimate_mean ))
-    env.estimate_mean[:] *= 0
+    lgc =  -1*np.sum(np.dot(env.K, env.estimate))
     return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
-def control_rl(env):
+def control_rlc(env):
     lgc =  -1*env.action * env.Fmax
-    env.estimate_mean[:] *= 0
     return 1*np.sign(lgc)*min(np.abs(lgc), env.Fmax, key=abs)
 
-
-################################################# Time Evolutions function & Measurement
+# Time Evolutions function & Measurement
 def time_evolution_classical(env):
     env.actual_pos = env.time_step(env, env.actual_pos) + env.B.dot(env.control)
     meas = np.random.normal(0, env.sigma , 2)
@@ -115,65 +112,57 @@ def time_evolution_classical(env):
 
 def time_evolution_quantum(env):
     
+    #time evoultionn on the potential
     for _ in range(7):
-        env.psi_0 = rk4(env.psi_0, env.dt/7, env.m, env.V, env.dx) #cant speed up currently
+        env.psi_0 = rk4(env.psi_0, env.dt/7, env.m, env.V, env.dx)
     env.psi_0 = kick_operator(env, env.control[1])*env.psi_0
     
-    ### Weak MEasurements    
+    # Weak Measurements    
     q_meas_n, env.psi_0 = utilt.wm_pos(env)
     env.psi_1 = utilt.deriv_first(env.xarr, env.psi_0)
     env.psi_2 = utilt.deriv_first(env.xarr, env.psi_1)
     p_meas_n, env.psi_0 = utilt.wm_mom(env)         
     env.measurement[0] = q_meas_n
     env.measurement[1] = p_meas_n
+
+    #Calculating actual <x> value, for termination condition
     env.actual_pos[0] = np.real(np.sum(env.psi_0*env.xarr*np.conj(env.psi_0)*env.dx))
-    env.actual_pos[1] = np.real(np.sum(env.psi_1*np.conj(env.psi_0)*env.dx))
+    #env.actual_pos[1] = np.real(np.sum(env.psi_1*np.conj(env.psi_0)*env.dx))
 
-################################################# State Estimation functions
-
-def estimator_quadratic(env):    
-    # env.estimate_mean += env.estimate/env.N_meas
+#State Estimation functions
+def kalman(env):    
     env.measurement_mean += env.measurement/env.N_meas
     if env.number_of_steps_taken%env.N_meas == env.N_meas-1:
         x_pred = env.A.dot(env.estimate)  + env.B.dot(env.control) ### xpred
         env.estimate = x_pred + env.kalman_gain.dot(env.measurement_mean -  env.C.dot(x_pred))
-        env.estimate_mean += env.estimate
         env.measurement_mean *= 0
 
-def estimator_quartic(env):
-    x_pred = quarticV(env, env.estimate) + env.B.dot(env.control) ### state prediction
-    y_pred = env.C.dot(x_pred)                                                                 ### measurement prediction
-    y_res = env.measurement - y_pred                                                                ### measurement residual
-    env.P = env.A.dot(env.P).dot(np.transpose(env.A)) + env.Q                  ### State prediciton covariance
-    S_pred = env.R + env.C.dot(env.P).dot(np.transpose(env.C))                              ### Innovation Covariance
-    kalman_gain = env.P.dot(np.transpose(env.C)).dot( np.linalg.inv(S_pred) )                 ### Filter gain
-    env.estimate = x_pred + kalman_gain.dot(y_res)
-    env.P = env.P - kalman_gain.dot(S_pred).dot(np.transpose(kalman_gain))
-    env.estimate_mean += env.estimate/env.N_meas
+def extended_kalman(env):
+    env.measurement_mean += env.measurement/env.N_meas
+    if env.number_of_steps_taken%env.N_meas == env.N_meas-1:    
+        x_pred = env.time_step(env, env.estimate) + env.B.dot(env.control)          ### state prediction
+        y_pred = env.C.dot(x_pred)                                                  ### measurement prediction
+        y_res = env.measurement - y_pred                                            ### measurement residual
+        env.P = env.A.dot(env.P).dot(np.transpose(env.A)) + env.Q                   ### State prediciton covariance
+        S_pred = env.R + env.C.dot(env.P).dot(np.transpose(env.C))                  ### Innovation Covariance
+        kalman_gain = env.P.dot(np.transpose(env.C)).dot( np.linalg.inv(S_pred) )   ### Filter gain
+        env.estimate = x_pred + kalman_gain.dot(y_res)
+        env.P = env.P - kalman_gain.dot(S_pred).dot(np.transpose(kalman_gain))
+        env.measurement_mean *= 0
 
-def estimator_cosine(env):
-    x_pred = cosineV(env, env.estimate) + env.B.dot(env.control) ### state prediction
-    y_pred = env.C.dot(x_pred)                                                                 ### measurement prediction
-    y_res = env.measurement - y_pred                                                                ### measurement residual
-    env.P = env.A.dot(env.P).dot(np.transpose(env.A)) + env.Q                  ### State prediciton covariance
-    S_pred = env.R + env.C.dot(env.P).dot(np.transpose(env.C))                              ### Innovation Covariance
-    kalman_gain = env.P.dot(np.transpose(env.C)).dot( np.linalg.inv(S_pred) )                 ### Filter gain
-    env.estimate = x_pred + kalman_gain.dot(y_res)
-    env.P = env.P - kalman_gain.dot(S_pred).dot(np.transpose(kalman_gain))
-    env.estimate_mean += env.estimate/env.N_meas    
-
-def estimator_rle(env):
-    env.estimate += env.filter_model.predict(env.state_est, deterministic = True)[0]
-    env.estimate_mean += env.estimate/env.N_meas
+def rle(env):
+    env.measurement_mean += env.measurement/env.N_meas
+    if env.number_of_steps_taken%env.N_meas == env.N_meas-1:    
+        env.estimate += env.filter_model.predict(env.state_est, deterministic = True)[0]
+        env.measurement_mean *= 0
 
 def estimator_none(env):
     pass   
 
-############################################## Reward Function
-
+# Reward Function
 def reward_running(env):
     if np.abs(env.actual_pos[0]) > env.max_position:
-        reward = -2 + env.number_of_steps_taken/env.termination
+        reward = env.number_of_steps_taken/env.termination
     else:
         reward = 0
     return reward
@@ -181,24 +170,17 @@ def reward_running(env):
 def reward_filter(env):
     return -1*np.mean(env.difference)
 
-############################################# State functions
-
-def state_filter(env):
-    env.state[:2] = env.measurement / env.L
-    env.state[2:4] = env.estimate
-    env.state[4] = env.B.dot(env.control)[1]
-
+# State returns, state_estimator is only used when training an estimator model
 def state_running(env):
-    env.state[:] = env.estimate_mean
-
-def state_running_filter(env):
     env.state[:] = env.estimate_mean    
     env.state_est[:2] = env.measurement / env.L
     env.state_est[2:4] = env.estimate
     env.state_est[4] = env.B.dot(env.control)[1]    
 
-def state_pass(env):
-    pass    
+def state_estimator(env):
+    env.state[:2] = env.measurement / env.L
+    env.state[2:4] = env.estimate
+    env.state[4] = env.B.dot(env.control)[1]
 
 ##############################################
 def sigma_func1(x, a, b):
@@ -207,11 +189,45 @@ def sigma_func1(x, a, b):
 def sigma_func2(x, a, b, c):
     return a * np.exp(x*b) + c   
 
-class QuantumCartPoleEnvV1(gym.Env):### Cont Push
+class QuantumCartPoleEnvV1(gym.Env):
+    """
+    Description:
+        A pole is attached by an un-actuated joint to a cart, which moves along
+        a frictionless track. The pendulum starts upright, and the goal is to
+        prevent it from falling over by increasing and reducing the cart's
+        velocity.
+
+    Observation:
+        Type: Box(2)
+        Num     Observation                                 Min                     Max
+        0       Mean Weak Measurement Position             -x_border                x_border
+        1       Mean Weak Measurement Momentum             -x_border                x_border
+
+    Actions RLC:
+        Type: Continuous
+        Num     Action                                  Min                     Max 
+        0       push the wavefunction                   -1                      +1
+        Note: The max stregth of the kick is fixed in the beginning
+
+    Actions RLE:
+        Type: Continuous
+        Num     Action                                  Min                     Max 
+        0       adjust the position estimation          -1                      +1 
+        1       adjust the momentum estimation          -1                      +1        
+
+    Reward:
+        RLC: +number_of_steps/termination
+        RLE: -np.mean(abs(esitmation - measurement))
+
+    Episode Termination:
+        When more then 50% of the probability distribution is outside of the threshold area
+        Episode length is greater than 1e6.
+    """    
+
     metadata = {'render.modes': ['human']}
     reward_range = (-float("inf"), float("inf"))
     
-    def __init__(self, N_meas = 1, k = np.pi, system = 'quantum', potential = 'quadratic', controller = 'rlc', estimator = 'rle', filter_model = None):
+    def __init__(self, N_meas = 1, k = np.pi, system = 'quantum', potential = 'quadratic', controller = 'rlc', estimator = 'rle', state_return = 'state_running',filter_model = None):
         
         ######################################Variables you always need
         self.N_meas = N_meas
@@ -224,6 +240,7 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
         self.termination = 1e6
         self.Fmax = 8*np.pi
         self.sigma = 0.7
+        self.system = system
 
         self.rewards = 0
         self.run_count = 1
@@ -240,13 +257,17 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
         border = np.ones(2, dtype = np.float64) * self.max_position*2
         self.observation_space = spaces.Box(-1*border, border, dtype=np.float64)  
         self.state = np.zeros(2, dtype = np.float64)
+        self.state_est = np.zeros(5, dtype = np.float64)
         self.reward_func = reward_running
-
+        self.time_step = eval(potential)
+        self.return_output = eval(state_return)
 
         if system == 'classical':
-            self.back = np.zeros(2)
-            self.time_step = eval(potential)
+            self.A = np.array([[1 , (self.dt * N_meas) /self.m], [self.k*(self.dt * N_meas) , 1]])
+            self.B = np.array([[0, 0], [0, self.dt * N_meas]])
+            self.C = np.diag([self.L, self.L])
             self.time_evolution = time_evolution_classical
+            self.back = np.zeros(2)
             if potential == 'quadratic':
                 self.P = np.array([[1 , 0], [0, 1]])
                 self.P_reset = np.array([[1 , 0], [0, 1]])                
@@ -265,8 +286,8 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
 
 
         elif system == 'quantum':
-            self.xarr = np.linspace(-2*self.max_position,2*self.max_position, 1001)
             self.Nq = 10001
+            self.xarr = np.linspace(-2*self.max_position,2*self.max_position, 1001)
             self.qarr = np.linspace(-5,5, self.Nq)
             self.dx, self.dq = self.xarr[1] - self.xarr[0], self.qarr[1] - self.qarr[0]
             self.time_evolution = time_evolution_quantum
@@ -284,49 +305,21 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
          
 
         if estimator == "kalman":
-            self.A = np.array([[1 , (self.dt * N_meas) /self.m], [self.k*(self.dt * N_meas) , 1]])
-            self.B = np.array([[0, 0], [0, self.dt * N_meas]])        
-            self.C = np.diag([self.L, self.L])
-
             self.R = np.diag([ (self.sigma/self.L/np.sqrt(N_meas))**2, (self.sigma/self.L/np.sqrt(N_meas))**2 ])
             self.Q = np.ones((2,2)) * 2*(self.sigma/self.L * (self.L**2/(2*self.sigma**2)   / (1/(2*1.41**2))))**2 /np.sqrt(N_meas)
             self.U = np.ones((2,2)) * (self.sigma/self.L)**2/100 /np.sqrt(N_meas)
 
             self.T = self.U.dot(np.linalg.inv(self.R))
             self.A_mod = self.A - self.T.dot(self.C)
-            self.Q_mod = self.Q - self.T.dot(np.transpose(U))
+            self.Q_mod = self.Q - self.T.dot(np.transpose(self.U))
             self.kalman_gain , _, _= ct.dlqe(self.A_mod, np.diag([1,1]), self.C, self.Q_mod, self.R)
 
         if controller == "lqr":
             self.A2 = np.array([[1 , (self.dt * self.N_meas) /self.m], [self.k*(self.dt * self.N_meas), 1]])
             self.B2 = np.array([[0], [(self.dt * self.N_meas)]])         
             self.Q2 = np.diag([self.k/2, 1/(self.m*2)])
-            self.R2 = np.diag([0.]) #square matrix
+            self.R2 = np.diag([0.])
             self.K, _, _ = ct.dlqr(self.A2, self.B2, self.Q2, self.R2)
-
-
-        # if self.types[1] == 'f':
-        #     # border = np.ones(5, dtype = np.float64) * self.max_position*2# / self.L
-        #     # self.observation_space = spaces.Box(-1*border, border, dtype=np.float64)            
-        #     self.state = np.zeros(5, dtype = np.float64)
-        #     self.state_est = np.zeros(5, dtype = np.float64) 
-
-        # elif self.types[2] == 'l':
-                 
-        #     self.state = np.zeros(2, dtype = np.float64) 
-        #     if self.types[1] == 'f':
-        #         # self.state = np.zeros(2, dtype = np.float64) 
-        #         self.return_output = state_running_filter
-        #     else:
-        #         self.return_output = state_running
-                
-        # elif self.types[2] == 'r':
-        #     border = np.ones(5, dtype = np.float64) * self.max_position*4# / self.L
-        #     self.observation_space = spaces.Box(-1*border, border, dtype=np.float64)                   
-        #     self.state = np.zeros(5, dtype = np.float64) 
-        #     self.return_output = state_filter
-        # else:
-        #     assert False, f'wrong type {self.types}'
 
         self.estimator = eval(estimator)
         self.controller = eval(controller)        
@@ -339,24 +332,19 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
     def step(self, action):
         self.action = action        
         self.state[:] = 0.
-        # self.analysis[:] = 0.
-
         reward = 0
         
         for i in range(self.N_meas):
             self.Jacobian(self)
             self.number_of_steps_taken += 1
-            # self.index += 1
 
             if i == 0:
-                self.control[1] = self.controller(self) ## can be random, rl or lqr
-            self.time_evolution(self) ## wavefuntion time evoultion or classical, inclusive force applyied and measurement
-            self.estimator(self) ## Kalman Filter or RL
-            # reward += self.reward_func(self) ## rewards
-            # self.return_output(self)
+                self.control[1] = self.controller(self) 
+            self.time_evolution(self) 
+            self.estimator(self) 
+            reward += self.reward_func(self)
+            self.return_output(self)
 
-            # self.analysis[:2] += np.abs(self.actual_pos)
-            # self.analysis[2] += self.energy_func(self)
             if np.abs(self.actual_pos[0]) > self.max_position:
                 break
 
@@ -375,16 +363,13 @@ class QuantumCartPoleEnvV1(gym.Env):### Cont Push
 
     def reset(self):
 
-        if self.types[0] == 'c':
-            self.actual_pos[0] = np.random.uniform(low=-self.mux, high=self.mux)
-            self.actual_pos[1] = np.random.uniform(low=-self.mu, high=self.mu)
-        elif self.types[0] == 'q':
+        if self.system == 'classical':
+            self.actual_pos[0] = np.random.normal(0, self.mu[0], 1)
+            self.actual_pos[1] = np.random.uniform(0, self.mu[1], 1)
+        elif self.system == 'quantum':
             self.psi_0 = utilt.gaussian_wavepaket(self.xarr, 0, np.random.uniform(-self.mu, self.mu), 1)
 
-        # print(self.actual_pos)
-        if self.types[1] == 'n':
-            self.P = 1. * self.P_reset #np.diag([0.,0.1])
-        
+        self.P = 1. * self.P_reset
         self.estimate[:] = 0.
         self.estimate_mean[:] = 0.
         self.control[:] = 0.
