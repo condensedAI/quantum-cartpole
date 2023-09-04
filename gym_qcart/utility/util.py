@@ -1,7 +1,5 @@
 import numpy as np
 import numba as nb
-from scipy.signal import savgol_filter
-from scipy.optimize import curve_fit
 
 @nb.jit
 def gaussian_wavepaket(x, x0, p0, sig):
