@@ -1,14 +1,12 @@
 from stable_baselines3 import PPO
 
-import os, sys
+import os
 
 import gym
 import gym_qcart
 import numpy as np
-import matplotlib.pyplot as plt
 import torch as th
 
-from stable_baselines3.common.results_plotter import load_results, ts2xy, plot_results
 from stable_baselines3.common.callbacks import BaseCallback
 
 def create_folder(name):
@@ -55,7 +53,6 @@ class CustomSaveOnBestNSteps(BaseCallback):
                 print(f"Num timesteps: {self.num_timesteps}")
                 print(f"Best mean reward: {self.best_mean_reward:.4f} - Last mean reward per episode: {mean_reward:.4f} - Run Count: {run_count:.4f}")
 
-          self.model.save(self.save_path + '_last')
           if mean_reward > self.best_mean_reward:
               self.best_mean_reward = mean_reward
               # Example for saving best model
@@ -117,16 +114,12 @@ class CustomSaveOnBestFilter(BaseCallback):
               self.model.save(self.save_path)
           
           
-        #   env.seed(2)
           env.reset()
-
-        #   weights = model.policy.state_dict()
-        #   print("end", weights['value_net.weight'].numpy()[0, 0:10])
 
         return self.continue_training
 
 if __name__ == "__main__":
-    log_dir = f"data/"
+    log_dir = f"example/data/"
 
 
     ### Training of the RLE 
@@ -144,10 +137,10 @@ if __name__ == "__main__":
     filter_model = PPO('MlpPolicy', env, verbose=0, use_sde = False,sde_sample_freq=-1, batch_size=batchsize, n_epochs = n_epochs, clip_range=clip_range, learning_rate=learning_rate, n_steps = n_steps, policy_kwargs=policy_kwargs, target_kl = target_kl)#
 
     callback = CustomSaveOnBestFilter(check_freq=n_steps, log_dir= filepath, env = env, file_name = file_name, mean = 1, verbose = 1)
-    filter_model.learn(total_timesteps=5*n_steps, callback=callback)
+    filter_model.learn(total_timesteps=100000, callback=callback)
 
 
-    ### Training of the RLEC
+    ### Training of the RLC
     env = gym.make('qcart-v0', potential = 'quadratic', k = np.pi, system = 'classical', controller = 'rlc', estimator = 'rle', filter_model = filter_model)
     file_name = 'rlc'
     filepath = log_dir + file_name 
@@ -161,4 +154,4 @@ if __name__ == "__main__":
     filter_model = PPO('MlpPolicy', env, verbose=0, use_sde = False,sde_sample_freq=-1, batch_size=batchsize, n_epochs = n_epochs, clip_range=clip_range, learning_rate=learning_rate, n_steps = n_steps, policy_kwargs=policy_kwargs, target_kl = target_kl)#
 
     callback = CustomSaveOnBestNSteps(check_freq=n_steps, log_dir= filepath, env = env, file_name = file_name, mean = 1, verbose = 1)
-    filter_model.learn(total_timesteps=100*n_steps, callback=callback)
+    filter_model.learn(total_timesteps=100000, callback=callback)

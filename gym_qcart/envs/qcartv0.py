@@ -220,19 +220,19 @@ class QuantumCartPoleEnvV0(gym.Env):
     metadata = {'render.modes': ['human']}
     reward_range = (-float("inf"), float("inf"))
     
-    def __init__(self, N_meas = 1, k = np.pi, system = 'quantum', potential = 'quadratic', controller = 'rlc', estimator = 'rle', state_return = 'state_running',filter_model = None):
+    def __init__(self, N_meas = 1, sigma = 0.7, dt = 0.01/np.pi, k = np.pi, system = 'quantum', potential = 'quadratic', controller = 'rlc', estimator = 'rle', state_return = 'state_running', filter_model = None):
         
         #Environment defining variables
         self.N_meas = N_meas
         self.k = k
         self.max_position = 8
-        self.dt = 0.01/np.pi
+        self.dt = dt
         self.L = 0.05
         self.mu = np.array([0. , 1.0], dtype=np.float64)
         self.m = 1/np.pi
         self.termination = 1e6
         self.Fmax = 8*np.pi
-        self.sigma = 0.7
+        self.sigma = sigma
         self.system = system
         
         #Initialize array needed during the run
