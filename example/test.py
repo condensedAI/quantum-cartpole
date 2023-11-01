@@ -13,7 +13,7 @@ if __name__ == "__main__":
     model = PPO.load(f"{log_dir}/{potential}_1Meas")
     filter_model = PPO.load(f"{log_dir}/{potential}_filter")
 
-    if potential == "linear":
+    if potential == "quadratic":
         env = gym.make('qcart-v0', potential = 'quadratic', k = np.pi, system = 'quantum', controller = 'rlc', estimator = 'rle', filter_model = filter_model)    
     elif potential == "cosine":        
         env = gym.make('qcart-v0', potential = 'cosine', k = 67, system = 'quantum', controller = 'rlc', estimator = 'rle', filter_model = filter_model)
