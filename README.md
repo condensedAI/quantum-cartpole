@@ -7,6 +7,7 @@ Installation
 To get started with the Quantum Cartpole environment, you can install it by simply cloning this repository:
 
 .. code-block:: bash 
+
 	git clone https://github.com/condensedAI/quantum-cartpole.git
 
 Basic Usage
@@ -14,7 +15,7 @@ Basic Usage
 
 The Quantum Cartpole environment adheres to the OpenAI Gym standard and can be used as follows. It offers a choice of three different potentials: quadratic, cosine, and quartic, and can be switched between classical and quantum environment.
 
-.. code-block:: bash 
+.. code-block:: bash
 
 	import gym
 	import gym_qcart
