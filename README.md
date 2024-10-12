@@ -6,10 +6,9 @@ Installation
 
 To get started with the Quantum Cartpole environment, you can install it by simply cloning this repository:
 
-.. code-block:: bash 
-
+```
 	git clone https://github.com/condensedAI/quantum-cartpole.git
-
+```
 Basic Usage
 ------------
 
