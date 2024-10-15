@@ -32,6 +32,7 @@ To run examples for training and testing the agents, you can use the following c
 For training with a quadratic potential:
 
 .. code-block:: bash
+    
     python -m example.train
 
 
