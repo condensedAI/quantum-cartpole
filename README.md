@@ -36,7 +36,7 @@ Reference
 
 When you cite this repository, please use the following:
 
-.. code-block:: bibtex
+```
 
   @software{meinerz_2023_10060570,
     author       = {Meinerz, Kai},
@@ -48,3 +48,4 @@ When you cite this repository, please use the following:
     doi          = {10.5281/zenodo.10060570},
     url          = {https://doi.org/10.5281/zenodo.10060570}
   }
+```
