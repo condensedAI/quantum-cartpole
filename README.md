@@ -6,7 +6,7 @@ Introduction
 
 Python implementation of a quantum cartpole environment which can be used for benchmarking and developing of agents as outline in https://doi.org/10.21468/SciPostPhysCore.7.2.026. The implementation adheres to the OpenAI Gym standard.
 
-Under the LGPL lisence.
+Under the MIT lisence.
 
 Installation
 ------------
