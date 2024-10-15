@@ -50,6 +50,7 @@ Reference
 When you cite this repository, please use the following:
 
 .. code-block:: bash
+
   @software{meinerz_2023_10060570,
     author       = {Meinerz, Kai},
     title        = {Quantum cartpole environment},
