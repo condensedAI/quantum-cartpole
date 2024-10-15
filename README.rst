@@ -22,9 +22,10 @@ Basic Usage
 The Quantum Cartpole environment can be used as follows. It offers a choice of three different potentials: quadratic, cosine, and quartic, and can be switched between classical and quantum environment.
 
 .. code-block:: bash
-    import gym
-    import gym_qcart
-    env = gym.make('qcart-v0', potential = 'quadratic', system = 'quantum')
+
+        import gym
+        import gym_qcart
+        env = gym.make('qcart-v0', potential = 'quadratic', system = 'quantum')
 
 To run examples for training and testing the agents, you can use the following commands:
 
