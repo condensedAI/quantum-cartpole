@@ -30,3 +30,21 @@ For testing:
 ```
 python -m example.test quadratic
 ```
+
+Reference
+---------
+
+When you cite this repository, please use the following:
+
+.. code-block:: bibtex
+
+  @software{meinerz_2023_10060570,
+    author       = {Meinerz, Kai},
+    title        = {Quantum cartpole environment},
+    month        = nov,
+    year         = 2023,
+    publisher    = {Zenodo},
+    version      = {v0.1.0},
+    doi          = {10.5281/zenodo.10060570},
+    url          = {https://doi.org/10.5281/zenodo.10060570}
+  }
