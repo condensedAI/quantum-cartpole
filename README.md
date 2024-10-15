@@ -1,6 +1,13 @@
 Quantum Cartpole
 =========
 
+Introduction
+------------
+
+Python implementation of a quantum cartpole environment which can be used for benchmarking and developing of agents as outline in https://doi.org/10.21468/SciPostPhysCore.7.2.026. The implementation adheres to the OpenAI Gym standard.
+
+Under the LGPL lisence.
+
 Installation
 ------------
 
@@ -12,7 +19,7 @@ git clone https://github.com/condensedAI/quantum-cartpole.git
 Basic Usage
 ------------
 
-The Quantum Cartpole environment adheres to the OpenAI Gym standard and can be used as follows. It offers a choice of three different potentials: quadratic, cosine, and quartic, and can be switched between classical and quantum environment.
+The Quantum Cartpole environment can be used as follows. It offers a choice of three different potentials: quadratic, cosine, and quartic, and can be switched between classical and quantum environment.
 
 ```
 import gym
